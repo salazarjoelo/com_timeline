@@ -1,66 +1,112 @@
 <?php
 /**
- * @version     1.0.0
- * @package     com_timeline
- * @copyright   Copyright (C) 2014. All rights reserved.
+ * @package     Salazarjoelo\Component\Timeline
+ * @subpackage  com_timeline
+ *
+ * @copyright   Copyright (C) 2023-2025 Joel Salazar. All rights reserved.
  * @license     GNU General Public License version 2 or later; see LICENSE.txt
- * @author      Adam Bouqdib <info@donjoomla.com> - http://donjoomla.com
  */
 
-// No direct access.
+declare(strict_types=1);
+
+namespace Salazarjoelo\Component\Timeline\Administrator\Controller;
+
 defined('_JEXEC') or die;
 
-jimport('joomla.application.component.controlleradmin');
+use Joomla\CMS\MVC\Controller\AdminController;
+use Joomla\CMS\Router\Route; // Aunque no se usa directamente en este archivo, es bueno mantenerlo si se planea usar
+use Joomla\CMS\Session\Session; // Igual que Route
+use Joomla\CMS\Language\Text;
+use Joomla\CMS\Factory;
+use Joomla\CMS\MVC\Model\BaseDatabaseModel; // Para el tipado de getModel
 
 /**
  * Items list controller class.
+ *
+ * @since  5.0.0
  */
-class TimelineControllerItems extends JControllerAdmin
+class ItemsController extends AdminController
 {
-	/**
-	 * Proxy for getModel.
-	 * @since	1.6
-	 */
-	public function getModel($name = 'item', $prefix = 'TimelineModel')
-	{
-		$model = parent::getModel($name, $prefix, array('ignore_request' => true));
-		return $model;
-	}
-    
-    
-	/**
-	 * Method to save the submitted ordering values for records via AJAX.
-	 *
-	 * @return  void
-	 *
-	 * @since   3.0
-	 */
-	public function saveOrderAjax()
-	{
-		// Get the input
-		$input = JFactory::getApplication()->input;
-		$pks = $input->post->get('cid', array(), 'array');
-		$order = $input->post->get('order', array(), 'array');
+    /**
+     * The prefix for the models.
+     *
+     * @var    string
+     * @since  5.0.0
+     */
+    protected $model_prefix = 'Administrator'; // Definido como propiedad para claridad
 
-		// Sanitize the input
-		JArrayHelper::toInteger($pks);
-		JArrayHelper::toInteger($order);
+    /**
+     * Constructor.
+     *
+     * @param   array  $config  An optional associative array of configuration settings.
+     *
+     * @see     \Joomla\CMS\MVC\Controller\BaseController
+     * @since   5.0.0
+     */
+    public function __construct(array $config = [])
+    {
+        parent::__construct($config);
 
-		// Get the model
-		$model = $this->getModel();
+        // Puedes registrar tareas aquí si es necesario, aunque AdminController ya tiene muchas.
+        // $this->registerTask('nueva_tarea', 'metodoNuevaTarea');
+    }
 
-		// Save the ordering
-		$return = $model->saveorder($pks, $order);
+    /**
+     * Proxy for getModel.
+     *
+     * @param   string  $name    The name of the model.
+     * @param   string  $prefix  The prefix for the class name.
+     * @param   array   $config  Configuration array for model.
+     *
+     * @return  BaseDatabaseModel|false  Model object on success; otherwise false.
+     *
+     * @since   5.0.0
+     */
+    public function getModel(string $name = 'Item', string $prefix = '', array $config = ['ignore_request' => true]): BaseDatabaseModel|false // Tipado añadido
+    {
+        // Si $prefix está vacío, usa el $model_prefix de la clase.
+        // Esto permite más flexibilidad si se llama externamente.
+        if (empty($prefix)) {
+            $prefix = $this->model_prefix;
+        }
+        
+        // Asegura que el modelo solicitado sea uno de los modelos principales de la lista
+        // o un modelo específico de un ítem. AdminController espera 'nombreplural' para la lista
+        // y 'nombresingular' para el ítem.
+        // Aquí, estamos forzando 'Item' como el modelo singular por defecto.
+        // Si el $name que llega es 'Items' (plural, para la lista),
+        // AdminController lo manejará correctamente si existe ItemsModel.
+        // Si es para un ítem singular, 'Item' es correcto.
 
-		if ($return)
-		{
-			echo "1";
-		}
+        $model = parent::getModel($name, $prefix, $config);
 
-		// Close the application
-		JFactory::getApplication()->close();
-	}
-    
-    
-    
+        return $model;
+    }
+
+    // AdminController ya proporciona métodos como publish, unpublish, delete, etc.
+    // Solo necesitas sobrescribirlos o añadir nuevos si requieres lógica personalizada.
+    // Por ejemplo, si tuvieras un botón "Archivar" personalizado:
+    /*
+    public function archive(): void
+    {
+        $this->checkToken(); // Comprobar CSRF Token
+        $cid   = $this->input->get('cid', [], 'array'); // Obtener los IDs seleccionados
+        $model = $this->getModel('Item'); // Obtener el modelo singular
+
+        if (empty($cid)) {
+            Factory::getApplication()->enqueueMessage(Text::_('JGLOBAL_NO_ITEM_SELECTED'), 'error');
+            $this->setRedirect(Route::_('index.php?option=com_timeline&view=items', false));
+            return;
+        }
+
+        try {
+            $model->archive($cid); // Suponiendo que tienes un método archive en tu ItemModel
+            $this->setMessage(Text::plural('COM_TIMELINE_N_ITEMS_ARCHIVED', count($cid)));
+        } catch (\Exception $e) {
+            $this->setMessage($e->getMessage(), 'error');
+        }
+
+        $this->setRedirect(Route::_('index.php?option=com_timeline&view=items', false));
+    }
+    */
 }
