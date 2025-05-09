@@ -1,47 +1,50 @@
 <?php
-
 /**
- * @version     1.0.0
- * @package     com_timeline
- * @copyright   Copyright (C) 2014. All rights reserved.
+ * @package     Salazarjoelo\Component\Timeline
+ * @subpackage  com_timeline
+ *
+ * @copyright   Copyright (C) 2023-2025 Joel Salazar. All rights reserved.
  * @license     GNU General Public License version 2 or later; see LICENSE.txt
- * @author      Adam Bouqdib <info@donjoomla.com> - http://donjoomla.com
  */
+
+declare(strict_types=1);
+
+namespace Salazarjoelo\Component\Timeline\Administrator\Model;
+
 defined('_JEXEC') or die;
 
-jimport('joomla.application.component.modellist');
+use Joomla\CMS\Factory;
+use Joomla\CMS\MVC\Model\ListModel; // Usar ListModel directamente es más específico para listas
+use Joomla\CMS\Language\Text;
+use Joomla\Database\Query\Query; // Para el tipado de retorno de getListQuery
 
 /**
- * Methods supporting a list of Timeline records.
+ * Items Model for Timeline component (Administrator)
+ *
+ * @since  5.0.0
  */
-class TimelineModelItems extends JModelList {
-
+class ItemsModel extends ListModel // Cambiado de AdminModel a ListModel para mayor especificidad
+{
     /**
      * Constructor.
      *
-     * @param    array    An optional associative array of configuration settings.
-     * @see        JController
-     * @since    1.6
+     * @param   array  $config  An optional associative array of configuration settings.
+     *
+     * @since   5.0.0
      */
-    public function __construct($config = array()) {
+    public function __construct(array $config = [])
+    {
+        // Definir los campos que se pueden filtrar en esta vista de lista
         if (empty($config['filter_fields'])) {
-            $config['filter_fields'] = array(
-                                'id', 'a.id',
-                'timeline', 'a.timeline',
+            $config['filter_fields'] = [
+                'id', 'a.id',
+                'title', 'a.title',
+                'description', 'a.description', // Si quieres buscar en la descripción
                 'state', 'a.state',
-                'headline', 'a.headline',
-                'startdate', 'a.startdate',
-                'enddate', 'a.enddate',
-                'created_by', 'a.created_by',
-                'text', 'a.text',
-                'tag', 'a.tag',
-                'media', 'a.media',
-                'thumbnail', 'a.thumbnail',
-                'credit', 'a.credit',
-                'caption', 'a.caption',
-                'classname', 'a.classname',
-
-            );
+                'created', 'a.created',
+                'created_by', 'a.created_by', 'uc.name', // Asumiendo alias uc para el creador
+                'ordering', 'a.ordering',
+            ];
         }
 
         parent::__construct($config);
@@ -51,209 +54,104 @@ class TimelineModelItems extends JModelList {
      * Method to auto-populate the model state.
      *
      * Note. Calling getState in this method will result in recursion.
+     *
+     * @param   string|null  $ordering   An optional ordering field.
+     * @param   string|null  $direction  An optional direction (asc|desc).
+     *
+     * @return  void
+     * @since   5.0.0
      */
-    protected function populateState($ordering = null, $direction = null) {
-        // Initialise variables.
-        $app = JFactory::getApplication('administrator');
+    protected function populateState(string $ordering = null, string $direction = null): void
+    {
+        $app = Factory::getApplication();
 
-        // Load the filter state.
-        $search = $app->getUserStateFromRequest($this->context . '.filter.search', 'filter_search');
+        // List state information
+        $ordering  = $ordering ?? 'a.ordering'; // Campo de ordenación por defecto
+        $direction = $direction ?? 'ASC';      // Dirección por defecto
+
+        parent::populateState($ordering, $direction);
+
+        // Filtro de búsqueda
+        $search = $this->getUserStateFromRequest($this->context . '.filter.search', 'filter_search', '', 'string');
         $this->setState('filter.search', $search);
 
-        $published = $app->getUserStateFromRequest($this->context . '.filter.state', 'filter_published', '', 'string');
-        $this->setState('filter.state', $published);
+        // Filtro de estado (publicado/despublicado/archivado/etc.)
+        $published = $this->getUserStateFromRequest($this->context . '.filter.published', 'filter_published', '', 'string');
+        $this->setState('filter.published', $published);
 
-        
-		//Filtering startdate
-		$this->setState('filter.startdate.from', $app->getUserStateFromRequest($this->context.'.filter.startdate.from', 'filter_from_startdate', '', 'string'));
-		$this->setState('filter.startdate.to', $app->getUserStateFromRequest($this->context.'.filter.startdate.to', 'filter_to_startdate', '', 'string'));
-
-		//Filtering enddate
-		$this->setState('filter.enddate.from', $app->getUserStateFromRequest($this->context.'.filter.enddate.from', 'filter_from_enddate', '', 'string'));
-		$this->setState('filter.enddate.to', $app->getUserStateFromRequest($this->context.'.filter.enddate.to', 'filter_to_enddate', '', 'string'));
-
-		//Filtering created_by
-		$this->setState('filter.created_by', $app->getUserStateFromRequest($this->context.'.filter.created_by', 'filter_created_by', '', 'string'));
-
-
-        // Load the parameters.
-        $params = JComponentHelper::getParams('com_timeline');
-        $this->setState('params', $params);
-
-        // List state information.
-        parent::populateState('a.startdate', 'asc');
+        // Cargar parámetros del componente si son necesarios para la consulta
+        // $params = ComponentHelper::getParams('com_timeline');
+        // $this->setState('params', $params);
     }
 
     /**
-     * Method to get a store id based on model configuration state.
+     * Method to get a JDatabaseQuery object for retrieving the data set from a database.
      *
-     * This is necessary because the model is used by the component and
-     * different modules that might need different sets of data or different
-     * ordering requirements.
-     *
-     * @param	string		$id	A prefix for the store id.
-     * @return	string		A store id.
-     * @since	1.6
+     * @return  Query|null  A JDatabaseQuery object to retrieve the data set or null if error.
+     * @since   5.0.0
      */
-    protected function getStoreId($id = '') {
-        // Compile the store id.
-        $id.= ':' . $this->getState('filter.search');
-        $id.= ':' . $this->getState('filter.state');
-
-        return parent::getStoreId($id);
-    }
-
-    /**
-     * Build an SQL query to load the list data.
-     *
-     * @return	JDatabaseQuery
-     * @since	1.6
-     */
-    protected function getListQuery() {
-        // Create a new query object.
-        $db = $this->getDbo();
+    protected function getListQuery(): ?Query
+    {
+        $db    = $this->getDbo();
         $query = $db->getQuery(true);
 
-        // Select the required fields from the table.
+        // Selectar los campos necesarios
         $query->select(
-                $this->getState(
-                        'list.select', 'a.*'
-                )
+            $this->getState(
+                'list.select',
+                [
+                    $db->quoteName('a.id'),
+                    $db->quoteName('a.title'),
+                    $db->quoteName('a.description'),
+                    $db->quoteName('a.date'),
+                    $db->quoteName('a.state'),
+                    $db->quoteName('a.ordering'),
+                    $db->quoteName('a.created'),
+                    $db->quoteName('a.created_by'),
+                    $db->quoteName('a.checked_out'),
+                    $db->quoteName('a.checked_out_time')
+                ]
+            )
         );
-        $query->from('`#__timeline_items` AS a');
+        $query->from($db->quoteName('#__timeline_items', 'a')); // Tu tabla principal
 
+        // Join para el nombre del creador
+        $query->select($db->quoteName('uc.name', 'author_name'))
+            ->join('LEFT', $db->quoteName('#__users', 'uc'), $db->quoteName('uc.id') . ' = ' . $db->quoteName('a.created_by'));
+
+        // Join para el nombre del editor (si tienes un campo modified_by)
+        // $query->select($db->quoteName('ue.name', 'editor_name'))
+        //    ->join('LEFT', $db->quoteName('#__users', 'ue'), $db->quoteName('ue.id') . ' = ' . $db->quoteName('a.modified_by'));
         
-		// Join over the users for the checked out user
-		$query->select("uc.name AS editor");
-		$query->join("LEFT", "#__users AS uc ON uc.id=a.checked_out");
-		// Join over the foreign key 'timeline'
-		$query->select('#__timeline_timelines_1193573.title AS timelines_title_1193573');
-		$query->join('LEFT', '#__timeline_timelines AS #__timeline_timelines_1193573 ON #__timeline_timelines_1193573.id = a.timeline');
-		// Join over the user field 'created_by'
-		$query->select('created_by.name AS created_by');
-		$query->join('LEFT', '#__users AS created_by ON created_by.id = a.created_by');
+        // Filtrar por estado (publicado, despublicado, archivado)
+        $state = $this->getState('filter.published');
+        if (is_numeric($state)) {
+            $query->where($db->quoteName('a.state') . ' = ' . (int) $state);
+        } elseif ($state === '') {
+            // Por defecto, no mostrar ítems archivados si el filtro está vacío
+            $query->where($db->quoteName('a.state') . ' IN (0, 1)');
+        }
 
-        
-
-		// Filter by published state
-		$published = $this->getState('filter.state');
-		if (is_numeric($published)) {
-			$query->where('a.state = ' . (int) $published);
-		} else if ($published === '') {
-			$query->where('(a.state IN (0, 1))');
-		}
-
-        // Filter by search in title
+        // Filtrar por búsqueda en el título (y descripción si se desea)
         $search = $this->getState('filter.search');
         if (!empty($search)) {
-            if (stripos($search, 'id:') === 0) {
-                $query->where('a.id = ' . (int) substr($search, 3));
-            } else {
-                $search = $db->Quote('%' . $db->escape($search, true) . '%');
-                $query->where('( a.headline LIKE '.$search.'  OR  a.tag LIKE '.$search.' )');
-            }
+            $search = $db->quote('%' . $db->escape($search, true) . '%');
+            $query->where('(' . $db->quoteName('a.title') . ' LIKE ' . $search .
+                ' OR ' . $db->quoteName('a.description') . ' LIKE ' . $search . ')' // Ejemplo si buscas en descripción
+            );
         }
 
+        // Añadir la ordenación
+        $orderCol = $this->getState('list.ordering', 'a.ordering');
+        $orderDirn = $this->getState('list.direction', 'ASC');
         
-
-		//Filtering startdate
-		$filter_startdate_from = $this->state->get("filter.startdate.from");
-		if ($filter_startdate_from) {
-			$query->where("a.startdate >= '".$db->escape($filter_startdate_from)."'");
-		}
-		$filter_startdate_to = $this->state->get("filter.startdate.to");
-		if ($filter_startdate_to) {
-			$query->where("a.startdate <= '".$db->escape($filter_startdate_to)."'");
-		}
-
-		//Filtering enddate
-		$filter_enddate_from = $this->state->get("filter.enddate.from");
-		if ($filter_enddate_from) {
-			$query->where("a.enddate >= '".$db->escape($filter_enddate_from)."'");
-		}
-		$filter_enddate_to = $this->state->get("filter.enddate.to");
-		if ($filter_enddate_to) {
-			$query->where("a.enddate <= '".$db->escape($filter_enddate_to)."'");
-		}
-
-		//Filtering created_by
-		$filter_created_by = $this->state->get("filter.created_by");
-		if ($filter_created_by) {
-			$query->where("a.created_by = '".$db->escape($filter_created_by)."'");
-		}
-
-
-        // Add the list ordering clause.
-        $orderCol = $this->state->get('list.ordering');
-        $orderDirn = $this->state->get('list.direction');
-        if ($orderCol && $orderDirn) {
-            $query->order($db->escape($orderCol . ' ' . $orderDirn));
+        // Validar la columna de ordenación para evitar inyección SQL
+        // $config['filter_fields'] debe estar definido en el constructor
+        if (in_array($orderCol, $this->get('filter_fields'))) {
+             $query->order($db->escape($orderCol) . ' ' . $db->escape($orderDirn));
         }
+
 
         return $query;
     }
-
-    public function getItems() {
-        $items = parent::getItems();
-        
-		foreach ($items as $oneItem) {
-
-			if (isset($oneItem->timeline)) {
-				$values = explode(',', $oneItem->timeline);
-
-				$textValue = array();
-				foreach ($values as $value){
-					$db = JFactory::getDbo();
-					$query = $db->getQuery(true);
-					$query
-							->select('title')
-							->from('`#__timeline_timelines`')
-							->where('id = ' . $db->quote($db->escape($value)));
-					$db->setQuery($query);
-					$results = $db->loadObject();
-					if ($results) {
-						$textValue[] = $results->title;
-					}
-				}
-
-				$oneItem->timeline = !empty($textValue) ? implode(', ', $textValue) : $oneItem->timeline;
-
-			}
-
-			if ( isset($oneItem->tag) ) {
-				// Catch the item tags (string with ',' coma glue)
-				$tags = explode(",",$oneItem->tag);
-
-				$db = JFactory::getDbo();
-					$namedTags = array(); // Cleaning and initalization of named tags array
-
-					// Get the tag names of each tag id
-					foreach ($tags as $tag) {
-
-						$query = $db->getQuery(true);
-						$query->select("title");
-						$query->from('`#__tags`');
-						$query->where( "id=" . intval($tag) );
-
-						$db->setQuery($query);
-						$row = $db->loadObjectList();
-
-						// Read the row and get the tag name (title)
-						if (!is_null($row)) {
-							foreach ($row as $value) {
-								if ( $value && isset($value->title) ) {
-									$namedTags[] = trim($value->title);
-								}
-							}
-						}
-
-					}
-
-					// Finally replace the data object with proper information
-					$oneItem->tag = !empty($namedTags) ? implode(', ',$namedTags) : $oneItem->tag;
-				}
-		}
-        return $items;
-    }
-
 }
